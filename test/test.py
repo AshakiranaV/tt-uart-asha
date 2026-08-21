@@ -1,40 +1,61 @@
-# SPDX-FileCopyrightText: © 2024 Tiny Tapeout
+# SPDX-FileCopyrightText: 2026 Ashakirana V
 # SPDX-License-Identifier: Apache-2.0
 
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles
 
+BIT_CYCLES = 5208  # 50 MHz / 9600 baud
+
 
 @cocotb.test()
-async def test_project(dut):
+async def test_uart_hello(dut):
     dut._log.info("Start")
 
-    # Set the clock period to 10 us (100 KHz)
-    clock = Clock(dut.clk, 10, unit="us")
+    # 50 MHz clock: 20 ns period
+    clock = Clock(dut.clk, 20, units="ns")
     cocotb.start_soon(clock.start())
 
     # Reset
-    dut._log.info("Reset")
     dut.ena.value = 1
     dut.ui_in.value = 0
     dut.uio_in.value = 0
     dut.rst_n.value = 0
     await ClockCycles(dut.clk, 10)
     dut.rst_n.value = 1
+    await ClockCycles(dut.clk, 10)
 
-    dut._log.info("Test project behavior")
+    # TX must idle high, busy low
+    assert dut.uo_out.value[0] == 1, "TX should idle high"
+    assert (dut.uo_out.value >> 1) & 1 == 0, "busy should be low at idle"
 
-    # Set the input values you want to test
-    dut.ui_in.value = 20
-    dut.uio_in.value = 30
+    # Trigger transmission (rising edge on ui_in[0])
+    dut.ui_in.value = 1
+    await ClockCycles(dut.clk, 5)
+    dut.ui_in.value = 0
+    await ClockCycles(dut.clk, 5)
 
-    # Wait for one clock cycle to see the output values
-    await ClockCycles(dut.clk, 1)
+    # Busy must assert
+    assert (dut.uo_out.value >> 1) & 1 == 1, "busy should assert after trigger"
 
-    # The following assersion is just an example of how to check the output values.
-    # Change it to match the actual expected output of your module:
-    assert dut.uo_out.value == 50
+    # Wait for the start bit (TX goes low), bounded wait
+    found_start = False
+    for _ in range(2 * BIT_CYCLES):
+        await ClockCycles(dut.clk, 1)
+        if dut.uo_out.value[0] == 0:
+            found_start = True
+            break
+    assert found_start, "start bit not seen on TX"
 
-    # Keep testing the module by changing the input values, waiting for
-    # one or more clock cycles, and asserting the expected output values.
+    # Move to the middle of data bit 0: 1.5 bit periods from start-bit edge
+    await ClockCycles(dut.clk, BIT_CYCLES + BIT_CYCLES // 2)
+
+    # Sample 8 data bits, LSB first
+    byte = 0
+    for i in range(8):
+        bit = int(dut.uo_out.value[0])
+        byte |= bit << i
+        await ClockCycles(dut.clk, BIT_CYCLES)
+
+    dut._log.info(f"First byte received: 0x{byte:02X}")
+    assert byte == ord("H"), f"expected 'H' (0x48), got 0x{byte:02X}"
