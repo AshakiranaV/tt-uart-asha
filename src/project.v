@@ -2,7 +2,7 @@
  * Copyright (c) 2026 Ashakirana V
  * SPDX-License-Identifier: Apache-2.0
  *
- * UART "Hello" transmitter for Tiny Tapeout TTSKY26c.
+ * UART "Hello" transmitter for Tiny Tapeout (Sky130).
  * On a rising edge of ui_in[0], transmits "HI ASHA\n" once
  * at 9600 baud (8N1) on uo_out[0]. uo_out[1] is high while busy.
  */
@@ -40,13 +40,23 @@ module tt_um_ashakiranav_uart_tx (
     endcase
   endfunction
 
-  // ---------- trigger edge detect ----------
-  reg trig_d;
+  // ---------- trigger synchroniser + edge detect ----------
+  // ui_in[0] comes from a push button, asynchronous to clk.
+  // trig_s1 may go metastable; it gets a full clock cycle to settle
+  // before trig_s2 samples it. Only trig_s2 (clean) is used by logic.
+  reg trig_s1, trig_s2, trig_d;
   always @(posedge clk or negedge rst_n) begin
-    if (!rst_n) trig_d <= 1'b0;
-    else        trig_d <= ui_in[0];
+    if (!rst_n) begin
+      trig_s1 <= 1'b0;
+      trig_s2 <= 1'b0;
+      trig_d  <= 1'b0;
+    end else begin
+      trig_s1 <= ui_in[0];  // stage 1: may go metastable
+      trig_s2 <= trig_s1;   // stage 2: synchronised value
+      trig_d  <= trig_s2;   // previous value, for edge detection
+    end
   end
-  wire start_pulse = ui_in[0] & ~trig_d;  // rising edge -> one-cycle pulse
+  wire start_pulse = trig_s2 & ~trig_d;  // rising edge -> one-cycle pulse
 
   // ---------- baud tick generator ----------
   reg [12:0] baud_cnt;   // counts 0..DIV-1 (5207 fits in 13 bits)
