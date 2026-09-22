@@ -1,42 +1,33 @@
 ![](../../workflows/gds/badge.svg) ![](../../workflows/docs/badge.svg) ![](../../workflows/test/badge.svg) ![](../../workflows/fpga/badge.svg)
 
-# Tiny Tapeout Verilog Project Template
+## How it works
 
-- [Read the documentation for project](docs/info.md)
+This project is a UART transmitter that sends the message "HI ASHA" followed by a newline,
+once, every time it is triggered. The UART frame format is 8N1 (one start bit, 8 data bits
+LSB first, one stop bit) at 9600 baud, generated from a 50 MHz system clock.
 
-## What is Tiny Tapeout?
+Internally the design has three parts:
 
-Tiny Tapeout is an educational project that aims to make it easier and cheaper than ever to get your digital and analog designs manufactured on a real chip.
+1. **Edge detector** - a registered copy of the trigger input is compared with the live
+   input, producing a single-cycle start pulse on a rising edge. Holding the button does
+   not retrigger the message.
+2. **Baud generator** - a counter divides the 50 MHz clock by 5208 to produce one tick per
+   bit period (9600 baud). It only runs while a transmission is active.
+3. **Transmit engine** - each character is loaded into a 10-bit shift register as
+   {stop, data[7:0], start}. On every baud tick the LSB is driven onto the TX line and the
+   register shifts right. After 10 bits the next character is loaded from a small ROM
+   holding the 8-character message. When the last character finishes, the line returns to
+   idle (high) and the busy flag clears.
 
-To learn more and get started, visit https://tinytapeout.com.
+## How to test
 
-## Set up your Verilog project
+1. Apply a 50 MHz clock and release reset (rst_n high).
+2. Connect uo[0] (TX) to a USB-serial adapter RX pin, configured for 9600 baud 8N1.
+3. Pulse ui[0] from low to high.
+4. The terminal should print: `HI ASHA`
+5. uo[1] (busy) stays high for the ~8.3 ms duration of the transmission.
 
-1. Add your Verilog files to the `src` folder.
-2. Edit the [info.yaml](info.yaml) and update information about your project, paying special attention to the `source_files` and `top_module` properties. If you are upgrading an existing Tiny Tapeout project, check out our [online info.yaml migration tool](https://tinytapeout.github.io/tt-yaml-upgrade-tool/).
-3. Edit [docs/info.md](docs/info.md) and add a description of your project.
-4. Adapt the testbench to your design. See [test/README.md](test/README.md) for more information.
+## External hardware
 
-The GitHub action will automatically build the ASIC files using [LibreLane](https://www.zerotoasiccourse.com/terminology/librelane/).
-
-## Enable GitHub actions to build the results page
-
-- [Enabling GitHub Pages](https://tinytapeout.com/faq/#my-github-action-is-failing-on-the-pages-part)
-
-## Resources
-
-- [FAQ](https://tinytapeout.com/faq/)
-- [Digital design lessons](https://tinytapeout.com/digital_design/)
-- [Learn how semiconductors work](https://tinytapeout.com/siliwiz/)
-- [Join the community](https://tinytapeout.com/discord)
-- [Build your design locally](https://www.tinytapeout.com/guides/local-hardening/)
-
-## What next?
-
-- [Submit your design to the next shuttle](https://app.tinytapeout.com/).
-- Edit [this README](README.md) and explain your design, how it works, and how to test it.
-- Share your project on your social network of choice:
-  - LinkedIn [#tinytapeout](https://www.linkedin.com/search/results/content/?keywords=%23tinytapeout) [@TinyTapeout](https://www.linkedin.com/company/100708654/)
-  - Mastodon [#tinytapeout](https://chaos.social/tags/tinytapeout) [@matthewvenn](https://chaos.social/@matthewvenn)
-  - X (formerly Twitter) [#tinytapeout](https://twitter.com/hashtag/tinytapeout) [@tinytapeout](https://twitter.com/tinytapeout)
-  - Bluesky [@tinytapeout.com](https://bsky.app/profile/tinytapeout.com)
+A USB-to-serial adapter (3.3 V logic) and a serial terminal program (e.g. minicom, PuTTY)
+to observe the transmitted message. A push button on ui[0] can be used as the trigger.
