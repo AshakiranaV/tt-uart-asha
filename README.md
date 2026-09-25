@@ -1,33 +1,37 @@
-![](../../workflows/gds/badge.svg) ![](../../workflows/docs/badge.svg) ![](../../workflows/test/badge.svg) ![](../../workflows/fpga/badge.svg)
+# UART Hello Transmitter — Tiny Tapeout (Sky130)
 
-## How it works
+[![](https://github.com/AshakiranaV/tt-uart-asha/workflows/gds/badge.svg)](https://github.com/AshakiranaV/tt-uart-asha/actions/workflows/gds.yaml)
+[![](https://github.com/AshakiranaV/tt-uart-asha/workflows/docs/badge.svg)](https://github.com/AshakiranaV/tt-uart-asha/actions/workflows/docs.yaml)
+[![](https://github.com/AshakiranaV/tt-uart-asha/workflows/test/badge.svg)](https://github.com/AshakiranaV/tt-uart-asha/actions/workflows/test.yaml)
+[![](https://github.com/AshakiranaV/tt-uart-asha/workflows/fpga/badge.svg)](https://github.com/AshakiranaV/tt-uart-asha/actions/workflows/fpga.yaml)
 
-This project is a UART transmitter that sends the message "HI ASHA" followed by a newline,
-once, every time it is triggered. The UART frame format is 8N1 (one start bit, 8 data bits
-LSB first, one stop bit) at 9600 baud, generated from a 50 MHz system clock.
+A small UART transmitter, designed and hardened for [Tiny Tapeout](https://tinytapeout.com) on the SkyWater 130nm open-source PDK.
 
-Internally the design has three parts:
+## What it does
 
-1. **Edge detector** - a registered copy of the trigger input is compared with the live
-   input, producing a single-cycle start pulse on a rising edge. Holding the button does
-   not retrigger the message.
-2. **Baud generator** - a counter divides the 50 MHz clock by 5208 to produce one tick per
-   bit period (9600 baud). It only runs while a transmission is active.
-3. **Transmit engine** - each character is loaded into a 10-bit shift register as
-   {stop, data[7:0], start}. On every baud tick the LSB is driven onto the TX line and the
-   register shifts right. After 10 bits the next character is loaded from a small ROM
-   holding the 8-character message. When the last character finishes, the line returns to
-   idle (high) and the busy flag clears.
+On a rising edge at `ui[0]`, the design transmits the message **"HI ASHA"** followed by a newline, once, as a standard 8N1 UART frame at 9600 baud, generated from a 50 MHz system clock. `uo[1]` (busy) stays high for the ~8.3 ms duration of the transmission.
 
-## How to test
+Full pin-by-pin description and test instructions: [docs/info.md](docs/info.md)
 
-1. Apply a 50 MHz clock and release reset (rst_n high).
-2. Connect uo[0] (TX) to a USB-serial adapter RX pin, configured for 9600 baud 8N1.
-3. Pulse ui[0] from low to high.
-4. The terminal should print: `HI ASHA`
-5. uo[1] (busy) stays high for the ~8.3 ms duration of the transmission.
+## Design
 
-## External hardware
+- **Edge detector** — converts a held trigger into a single-cycle start pulse, so holding the input doesn't retrigger the message.
+- **Baud generator** — divides the 50 MHz clock by 5208 to produce 9600-baud bit ticks, running only during an active transmission.
+- **Transmit engine** — loads each character into a 10-bit shift register (`{stop, data[7:0], start}`), shifts it out LSB-first each baud tick, and steps through an 8-character message ROM.
 
-A USB-to-serial adapter (3.3 V logic) and a serial terminal program (e.g. minicom, PuTTY)
-to observe the transmitted message. A push button on ui[0] can be used as the trigger.
+## Status
+
+- RTL verified with a cocotb testbench (`test/`)
+- Hardened end-to-end through the open-source RTL-to-GDS flow (OpenLane/LibreLane, Sky130 PDK) — see the `gds` badge above
+- top module: `tt_um_ashakiranav_uart_tx`, 1×1 tile
+
+## Repo layout
+
+- `src/` — Verilog source
+- `test/` — cocotb testbench
+- `docs/info.md` — full project datasheet
+- `info.yaml` — Tiny Tapeout project metadata
+
+## About Tiny Tapeout
+
+[Tiny Tapeout](https://tinytapeout.com) shares a shuttle wafer across many small designs, making it cheap to get a digital design onto real silicon. Built from the [Tiny Tapeout Verilog template](https://github.com/TinyTapeout/ttsky-verilog-template).
